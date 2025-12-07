@@ -250,6 +250,100 @@ BasketBall-System-N5/
 4. **Referee**: Quản lý trận đấu, cập nhật kết quả
 5. **Sponsor**: Tạo giải đấu, quản lý tài trợ
 
+## ⚙️ Hệ Thống Tự Động (Scripts)
+
+Hệ thống bao gồm các script tự động để quản lý và cập nhật trạng thái giải đấu.
+
+### 📜 Script: updateTournamentStatus.js
+
+Script này tự động cập nhật trạng thái của các giải đấu và xử lý logic playoff.
+
+**Vị trí**: `BACKEND/scripts/updateTournamentStatus.js`
+
+#### Chức năng chính:
+
+1. **Cập nhật trạng thái giải đấu**
+   - Tự động chuyển giải đấu từ `registration` → `ongoing` khi đến ngày bắt đầu
+   - Tự động chuyển giải đấu từ `ongoing` → `completed` khi kết thúc
+
+2. **Tự động thiết lập đội hình mặc định**
+   - Tự động chọn 5 cầu thủ cho mỗi trận đấu nếu huấn luyện viên chưa thiết lập
+   - Ưu tiên chọn theo vị trí: PG, SG, SF, PF, C
+   - Gửi thông báo cho huấn luyện viên khi đội hình được tự động thiết lập
+
+3. **Xử lý vòng Playoff tự động**
+   - Phát hiện khi vòng bảng kết thúc
+   - Tự động cập nhật đội vào bán kết:
+     - **SF1**: Nhất bảng A vs Nhì bảng B
+     - **SF2**: Nhì bảng A vs Nhất bảng B
+   - Tự động cập nhật đội vào chung kết khi bán kết hoàn thành
+   - Tự động thiết lập đội hình cho các trận playoff
+
+#### Cách chạy Script:
+
+**Chạy thủ công một lần:**
+```bash
+cd BACKEND
+npm run update-tournament-status
+```
+
+**Hoặc chạy trực tiếp:**
+```bash
+node scripts/updateTournamentStatus.js
+```
+
+#### Tích hợp Cron Job (Tùy chọn)
+
+Để script chạy tự động theo định kỳ, bạn có thể thiết lập cron job:
+
+**Trên Linux/macOS:**
+```bash
+# Mở crontab editor
+crontab -e
+
+# Thêm dòng sau để chạy mỗi giờ
+0 * * * * cd /path/to/BACKEND && node scripts/updateTournamentStatus.js >> logs/cron.log 2>&1
+
+# Hoặc chạy mỗi 30 phút
+*/30 * * * * cd /path/to/BACKEND && node scripts/updateTournamentStatus.js >> logs/cron.log 2>&1
+```
+
+**Trên Windows (Task Scheduler):**
+1. Mở Task Scheduler
+2. Tạo Basic Task mới
+3. Chọn trigger (ví dụ: chạy hàng giờ)
+4. Action: Start a program
+5. Program: `node`
+6. Arguments: `scripts/updateTournamentStatus.js`
+7. Start in: `C:\path\to\BACKEND`
+
+#### Output của Script:
+
+```
+🔄 [2025-12-07T10:00:00.000Z] Starting tournament status update...
+
+▶️  Tournament Summer League 2025 → ongoing
+   ✅ Updated semifinal 1
+   ✅ Updated semifinal 2
+   ✅ Auto-set lineup for team 1
+   ✅ Auto-set lineup for team 2
+   🎯 Updated 2 playoff matches
+
+🏁 Tournament Winter Cup 2024 → completed
+
+✅ Tournament status update completed!
+   - Ongoing: 1
+   - Completed: 1
+   - Playoff updates: 1
+```
+
+#### Lưu ý:
+
+- Script sử dụng transaction để đảm bảo tính toàn vẹn dữ liệu
+- Tự động tạo thông báo cho huấn luyện viên khi có thay đổi
+- An toàn rollback nếu có lỗi xảy ra
+- Có thể chạy nhiều lần mà không gây lỗi trùng lặp
+
 ## 🐛 Troubleshooting
 
 ### Backend không kết nối được Database

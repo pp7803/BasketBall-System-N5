@@ -34,7 +34,7 @@ const {
     unbanUserFromCommenting,
 } = require('../controllers/adminController');
 const { adminCreateNotification, adminGetAllNotifications } = require('../controllers/notificationController');
-const { getAllUsers, getUserDetail, updateUser, deleteUser } = require('../controllers/userController');
+const { getAllUsers, getUserDetail, updateUser, deleteUser, adjustUserMoney } = require('../controllers/userController');
 const { getAllRatings, hideRating, unhideRating, deleteRating } = require('../controllers/ratingController');
 const { authenticate, authorize } = require('../middleware/authentication');
 
@@ -194,6 +194,14 @@ router.put('/users/:id', updateUser);
  * @access  Admin
  */
 router.delete('/users/:id', deleteUser);
+
+/**
+ * @route   PUT /api/admin/users/:id/adjust-money
+ * @desc    Adjust user's money balance (add or deduct)
+ * @access  Admin
+ * @body    { amount, type: 'add' | 'deduct', reason }
+ */
+router.put('/users/:id/adjust-money', adjustUserMoney);
 
 /**
  * @route   GET /api/admin/tournament-update-requests

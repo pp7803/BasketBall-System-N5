@@ -820,6 +820,15 @@ export const userAPI = {
    * @returns {Promise}
    */
   deleteUser: (userId) => apiClient.delete(`/admin/users/${userId}`),
+
+  /**
+   * Admin: Adjust user's money balance
+   * @param {number} userId
+   * @param {Object} data - { amount, type: 'add' | 'deduct', reason }
+   * @returns {Promise}
+   */
+  adjustUserMoney: (userId, data) =>
+    apiClient.put(`/admin/users/${userId}/adjust-money`, data),
 };
 
 // ============================================================================

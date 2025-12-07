@@ -9,6 +9,7 @@ import {
   FaCheckCircle,
   FaTimesCircle,
   FaTimes,
+  FaMoneyBillWave,
 } from "react-icons/fa";
 
 const ManageMembersPage = () => {
@@ -32,6 +33,16 @@ const ManageMembersPage = () => {
   // Delete confirmation state
   const [deletingUser, setDeletingUser] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Money adjustment modal state
+  const [adjustMoneyUser, setAdjustMoneyUser] = useState(null);
+  const [moneyFormData, setMoneyFormData] = useState({
+    amount: "",
+    type: "add",
+    reason: "",
+  });
+  const [moneyLoading, setMoneyLoading] = useState(false);
+  const [moneyMessage, setMoneyMessage] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -173,6 +184,72 @@ const ManageMembersPage = () => {
       referee: "bg-yellow-100 text-yellow-800",
     };
     return colors[role] || "bg-gray-100 text-gray-800";
+  };
+
+  const openMoneyAdjustModal = (user) => {
+    setAdjustMoneyUser(user);
+    setMoneyFormData({
+      amount: "",
+      type: "add",
+      reason: "",
+    });
+    setMoneyMessage(null);
+  };
+
+  const closeMoneyAdjustModal = () => {
+    setAdjustMoneyUser(null);
+    setMoneyFormData({
+      amount: "",
+      type: "add",
+      reason: "",
+    });
+    setMoneyMessage(null);
+  };
+
+  const handleMoneyAdjust = async () => {
+    if (!moneyFormData.amount || moneyFormData.amount <= 0) {
+      setMoneyMessage({
+        type: "error",
+        text: "Vui lòng nhập số tiền hợp lệ",
+      });
+      return;
+    }
+
+    if (!moneyFormData.reason || moneyFormData.reason.trim().length === 0) {
+      setMoneyMessage({
+        type: "error",
+        text: "Vui lòng nhập lý do điều chỉnh",
+      });
+      return;
+    }
+
+    setMoneyLoading(true);
+    setMoneyMessage(null);
+    try {
+      const response = await userAPI.adjustUserMoney(
+        adjustMoneyUser.user_id,
+        moneyFormData
+      );
+      if (response.data.success) {
+        setMoneyMessage({
+          type: "success",
+          text: `Đã ${moneyFormData.type === "add" ? "cộng" : "trừ"} ${parseInt(
+            moneyFormData.amount
+          ).toLocaleString()} VND thành công!`,
+        });
+        setTimeout(() => {
+          closeMoneyAdjustModal();
+          fetchUsers();
+        }, 2000);
+      }
+    } catch (error) {
+      setMoneyMessage({
+        type: "error",
+        text: error.response?.data?.message || "Điều chỉnh tiền thất bại",
+      });
+    } finally {
+      setMoneyLoading(false);
+    }
   };
 
   return (
@@ -323,14 +400,24 @@ const ManageMembersPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => openEditModal(user)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
+                        className="text-blue-600 hover:text-blue-900 mr-3"
+                        title="Sửa thông tin"
                       >
                         <FaEdit className="inline mr-1" />
                         Sửa
                       </button>
                       <button
+                        onClick={() => openMoneyAdjustModal(user)}
+                        className="text-green-600 hover:text-green-900 mr-3"
+                        title="Điều chỉnh số dư"
+                      >
+                        <FaMoneyBillWave className="inline mr-1" />
+                        Tiền
+                      </button>
+                      <button
                         onClick={() => openDeleteConfirm(user)}
                         className="text-red-600 hover:text-red-900"
+                        title="Vô hiệu hóa tài khoản"
                       >
                         <FaTrash className="inline mr-1" />
                         Xóa
@@ -779,6 +866,135 @@ const ManageMembersPage = () => {
                 className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteLoading ? "Đang xóa..." : "Xóa"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Money Adjustment Modal */}
+      {adjustMoneyUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold flex items-center">
+                <FaMoneyBillWave className="text-green-600 mr-2" />
+                Điều chỉnh số dư
+              </h2>
+              <button
+                onClick={closeMoneyAdjustModal}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+
+            {moneyMessage && (
+              <div
+                className={`mb-4 p-4 rounded-lg ${
+                  moneyMessage.type === "success"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-red-100 text-red-800"
+                }`}
+              >
+                {moneyMessage.text}
+              </div>
+            )}
+
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600">Người dùng:</p>
+              <p className="font-semibold">{adjustMoneyUser.full_name}</p>
+              <p className="text-sm text-gray-600">
+                Username: {adjustMoneyUser.username}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Loại điều chỉnh
+                </label>
+                <select
+                  value={moneyFormData.type}
+                  onChange={(e) =>
+                    setMoneyFormData((prev) => ({
+                      ...prev,
+                      type: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="add">Cộng tiền</option>
+                  <option value="deduct">Trừ tiền</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Số tiền (VND)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  placeholder="Nhập số tiền"
+                  value={moneyFormData.amount}
+                  onChange={(e) =>
+                    setMoneyFormData((prev) => ({
+                      ...prev,
+                      amount: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                {moneyFormData.amount && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    = {parseInt(moneyFormData.amount).toLocaleString()} VND
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Lý do điều chỉnh <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  placeholder="Nhập lý do điều chỉnh số dư..."
+                  value={moneyFormData.reason}
+                  onChange={(e) =>
+                    setMoneyFormData((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                    }))
+                  }
+                  rows="3"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={closeMoneyAdjustModal}
+                disabled={moneyLoading}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleMoneyAdjust}
+                disabled={moneyLoading}
+                className={`px-6 py-2 text-white rounded-lg disabled:opacity-50 ${
+                  moneyFormData.type === "add"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-orange-600 hover:bg-orange-700"
+                }`}
+              >
+                {moneyLoading
+                  ? "Đang xử lý..."
+                  : moneyFormData.type === "add"
+                  ? "Cộng tiền"
+                  : "Trừ tiền"}
               </button>
             </div>
           </div>

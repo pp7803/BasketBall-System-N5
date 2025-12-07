@@ -606,6 +606,138 @@ const updateMyProfile = async (req, res) => {
     }
 };
 
+/**
+ * Admin: Adjust user's money balance
+ * PUT /api/admin/users/:id/adjust-money
+ * @body { amount, type: 'add' | 'deduct', reason }
+ */
+const adjustUserMoney = async (req, res) => {
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const { id } = req.params;
+        const { amount, type, reason } = req.body;
+        const admin_id = req.user.user_id;
+
+        // Validation
+        if (!amount || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Amount must be a positive number',
+            });
+        }
+
+        if (!type || !['add', 'deduct'].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Type must be either "add" or "deduct"',
+            });
+        }
+
+        if (!reason || reason.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Reason is required',
+            });
+        }
+
+        // Check if user exists
+        const [users] = await connection.query('SELECT user_id, username, full_name, money FROM users WHERE user_id = ?', [id]);
+
+        if (users.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'User not found',
+            });
+        }
+
+        const user = users[0];
+        const currentMoney = parseFloat(user.money) || 0;
+        const adjustAmount = parseFloat(amount);
+
+        let newMoney;
+        let transactionType;
+        let description;
+
+        if (type === 'add') {
+            newMoney = currentMoney + adjustAmount;
+            transactionType = 'admin_credit';
+            description = `Admin added ${adjustAmount.toLocaleString()} VND - Reason: ${reason}`;
+        } else {
+            // deduct
+            if (currentMoney < adjustAmount) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: `Insufficient balance. Current balance: ${currentMoney.toLocaleString()} VND`,
+                });
+            }
+            newMoney = currentMoney - adjustAmount;
+            transactionType = 'admin_debit';
+            description = `Admin deducted ${adjustAmount.toLocaleString()} VND - Reason: ${reason}`;
+        }
+
+        // Update user's money
+        await connection.query('UPDATE users SET money = ? WHERE user_id = ?', [newMoney, id]);
+
+        // Create transaction record
+        await connection.query(
+            `INSERT INTO transactions (user_id, amount, transaction_type, description, status, created_at)
+             VALUES (?, ?, ?, ?, 'completed', NOW())`,
+            [id, type === 'add' ? adjustAmount : -adjustAmount, transactionType, description]
+        );
+
+        // Create notification for user
+        const { createNotification } = require('./notificationController');
+        try {
+            await createNotification(connection, {
+                user_id: id,
+                type: type === 'add' ? 'money_added' : 'money_deducted',
+                title: type === 'add' ? '💰 Số dư được cộng thêm' : '💸 Số dư bị trừ',
+                message: description,
+                metadata: {
+                    amount: adjustAmount,
+                    type: type,
+                    previous_balance: currentMoney,
+                    new_balance: newMoney,
+                    reason: reason,
+                },
+                created_by: admin_id,
+            });
+        } catch (notifError) {
+            console.error('Error creating notification:', notifError);
+        }
+
+        await connection.commit();
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully ${type === 'add' ? 'added' : 'deducted'} ${adjustAmount.toLocaleString()} VND`,
+            data: {
+                user_id: id,
+                username: user.username,
+                full_name: user.full_name,
+                previous_balance: currentMoney,
+                new_balance: newMoney,
+                amount_adjusted: adjustAmount,
+                type: type,
+            },
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Adjust user money error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while adjusting user money',
+        });
+    } finally {
+        connection.release();
+    }
+};
+
 module.exports = {
     getAllUsers,
     getUserDetail,
@@ -613,4 +745,5 @@ module.exports = {
     deleteUser,
     getMyProfile,
     updateMyProfile,
+    adjustUserMoney,
 };
