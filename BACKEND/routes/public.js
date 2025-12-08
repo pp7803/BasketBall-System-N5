@@ -5,6 +5,7 @@ const {
     getMatchById,
     getMatchLineups,
     getStandings,
+    getFinalResults,
     searchMatches,
     getTeams,
     getTeamDetail,
@@ -50,6 +51,14 @@ router.get('/matches/:id/lineups', getMatchLineups);
  * @query   ?tournament_id=1 (required)
  */
 router.get('/standings', getStandings);
+
+/**
+ * @route   GET /api/public/final-results
+ * @desc    Xem kết quả chung cuộc (top 1, 2) sau khi chung kết kết thúc
+ * @access  Public
+ * @query   ?tournament_id=1 (required)
+ */
+router.get('/final-results', getFinalResults);
 
 /**
  * @route   GET /api/public/search

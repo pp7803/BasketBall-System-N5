@@ -255,6 +255,8 @@ const getStandings = async (req, res) => {
             [tournament_id]
         );
 
+        console.log(`📊 Fetched ${standings.length} teams for tournament ${tournament_id}`);
+
         // Group standings by group
         const groupedStandings = {};
         standings.forEach(team => {
@@ -264,6 +266,8 @@ const getStandings = async (req, res) => {
             }
             groupedStandings[groupName].push(team);
         });
+
+        console.log(`📊 Groups found: ${Object.keys(groupedStandings).join(', ')}`);
 
         // Update positions within each group
         Object.keys(groupedStandings).forEach(groupName => {
@@ -276,12 +280,130 @@ const getStandings = async (req, res) => {
             success: true,
             data: standings,
             grouped: groupedStandings,
+            totalTeams: standings.length,
+            groupCount: Object.keys(groupedStandings).length,
         });
     } catch (error) {
         console.error('Get standings error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error while getting standings',
+        });
+    }
+};
+
+/**
+ * GET /api/public/final-results
+ * Get final tournament results (Champion & Runner-up) after final match completed
+ * Access: Public
+ */
+const getFinalResults = async (req, res) => {
+    try {
+        const { tournament_id } = req.query;
+
+        if (!tournament_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Tournament ID is required',
+            });
+        }
+
+        // Check if final match is completed
+        const [finalMatch] = await pool.query(
+            `SELECT 
+                m.match_id,
+                m.home_team_id,
+                m.away_team_id,
+                m.home_score,
+                m.away_score,
+                m.status,
+                m.match_date,
+                ht.team_name as home_team_name,
+                ht.logo_url as home_team_logo,
+                at.team_name as away_team_name,
+                at.logo_url as away_team_logo
+            FROM matches m
+            LEFT JOIN teams ht ON m.home_team_id = ht.team_id
+            LEFT JOIN teams at ON m.away_team_id = at.team_id
+            WHERE m.tournament_id = ? 
+              AND m.stage = 'final'
+              AND m.status = 'completed'
+            LIMIT 1`,
+            [tournament_id]
+        );
+
+        if (finalMatch.length === 0) {
+            return res.status(200).json({
+                success: true,
+                hasFinalResult: false,
+                message: 'Final match not completed yet',
+            });
+        }
+
+        const match = finalMatch[0];
+        
+        // Determine champion and runner-up
+        const champion = match.home_score > match.away_score
+            ? {
+                team_id: match.home_team_id,
+                team_name: match.home_team_name,
+                logo_url: match.home_team_logo,
+                score: match.home_score,
+                rank: 1,
+              }
+            : {
+                team_id: match.away_team_id,
+                team_name: match.away_team_name,
+                logo_url: match.away_team_logo,
+                score: match.away_score,
+                rank: 1,
+              };
+
+        const runnerUp = match.home_score > match.away_score
+            ? {
+                team_id: match.away_team_id,
+                team_name: match.away_team_name,
+                logo_url: match.away_team_logo,
+                score: match.away_score,
+                rank: 2,
+              }
+            : {
+                team_id: match.home_team_id,
+                team_name: match.home_team_name,
+                logo_url: match.home_team_logo,
+                score: match.home_score,
+                rank: 2,
+              };
+
+        res.status(200).json({
+            success: true,
+            hasFinalResult: true,
+            data: {
+                champion,
+                runnerUp,
+                finalMatch: {
+                    match_id: match.match_id,
+                    match_date: match.match_date,
+                    home_team: {
+                        team_id: match.home_team_id,
+                        team_name: match.home_team_name,
+                        logo_url: match.home_team_logo,
+                        score: match.home_score,
+                    },
+                    away_team: {
+                        team_id: match.away_team_id,
+                        team_name: match.away_team_name,
+                        logo_url: match.away_team_logo,
+                        score: match.away_score,
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Get final results error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while getting final results',
         });
     }
 };
@@ -1307,6 +1429,7 @@ module.exports = {
     getMatchById,
     getMatchLineups,
     getStandings,
+    getFinalResults,
     searchMatches,
     getVenues,
     getTeams,

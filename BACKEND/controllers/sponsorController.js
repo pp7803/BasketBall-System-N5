@@ -1988,6 +1988,66 @@ const getTournamentTeams = async (req, res) => {
 };
 
 /**
+ * Helper function to validate match date is within tournament period
+ * and doesn't conflict with other tournaments using the same venue
+ */
+const validateMatchDateWithinTournament = async (connection, tournament_id, match_date, venue_id = null) => {
+    // Get tournament date range
+    const [tournaments] = await connection.query(
+        'SELECT tournament_name, start_date, end_date FROM tournaments WHERE tournament_id = ?',
+        [tournament_id]
+    );
+
+    if (tournaments.length === 0) {
+        return { valid: false, reason: 'Tournament not found' };
+    }
+
+    const tournament = tournaments[0];
+    const tournamentStart = new Date(tournament.start_date);
+    const tournamentEnd = new Date(tournament.end_date);
+    
+    // Format match_date to Date object
+    let matchDate = new Date(match_date);
+    if (typeof match_date === 'string' && (match_date.includes('T') || match_date.includes(' '))) {
+        matchDate = new Date(match_date.split('T')[0]);
+    }
+
+    // Check if match date is within tournament period
+    if (matchDate < tournamentStart || matchDate > tournamentEnd) {
+        return {
+            valid: false,
+            reason: `Thời gian trận đấu (${matchDate.toISOString().split('T')[0]}) phải nằm trong khoảng thời gian diễn ra giải đấu ${tournament.tournament_name} (${tournamentStart.toISOString().split('T')[0]} đến ${tournamentEnd.toISOString().split('T')[0]})`
+        };
+    }
+
+    // If venue_id provided, check conflicts with other tournaments
+    if (venue_id) {
+        const formattedDate = matchDate.toISOString().split('T')[0];
+        
+        const [conflictingMatches] = await connection.query(
+            `SELECT m.match_id, m.match_date, m.match_time, t.tournament_name, t.tournament_id
+             FROM matches m
+             JOIN tournaments t ON m.tournament_id = t.tournament_id
+             WHERE m.venue_id = ?
+               AND m.match_date = ?
+               AND m.tournament_id != ?
+               AND m.status IN ('scheduled', 'completed')`,
+            [venue_id, formattedDate, tournament_id]
+        );
+
+        if (conflictingMatches.length > 0) {
+            const conflictInfo = conflictingMatches[0];
+            return {
+                valid: false,
+                reason: `Sân đã được sử dụng cho giải đấu "${conflictInfo.tournament_name}" vào ngày ${formattedDate} (trận ${conflictInfo.match_id})`
+            };
+        }
+    }
+
+    return { valid: true, reason: null };
+};
+
+/**
  * Helper function to check referee availability
  * Rules:
  * 1. Referee can only officiate 1 match per day
@@ -2796,6 +2856,22 @@ const createGroupStageSchedule = async (req, res) => {
                 });
             }
 
+            // 🔥 CRITICAL: Validate match date is within tournament period and doesn't conflict with other tournaments
+            const dateValidation = await validateMatchDateWithinTournament(
+                connection,
+                tournamentId,
+                match.match_date,
+                match.venue_id
+            );
+
+            if (!dateValidation.valid) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: `Trận đấu ${i + 1} (${match.match_date}): ${dateValidation.reason}`,
+                });
+            }
+
             // Check venue availability (1 match per day per venue)
             const venueAvailabilityCheck = await checkVenueAvailability(connection, match.venue_id, match.match_date);
 
@@ -2864,6 +2940,22 @@ const createGroupStageSchedule = async (req, res) => {
                 if (!playoffMatch.venue_id || !playoffMatch.match_date || !playoffMatch.match_time) {
                     console.error('⚠️ Skipping playoff match - missing required fields:', playoffMatch);
                     continue;
+                }
+
+                // 🔥 CRITICAL: Validate playoff match date is within tournament period and doesn't conflict
+                const dateValidation = await validateMatchDateWithinTournament(
+                    connection,
+                    tournamentId,
+                    playoffMatch.match_date,
+                    playoffMatch.venue_id
+                );
+
+                if (!dateValidation.valid) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        success: false,
+                        message: `Trận playoff ${playoffMatch.stage} vòng ${playoffMatch.match_round} (${playoffMatch.match_date}): ${dateValidation.reason}`,
+                    });
                 }
 
                 // Insert match with NULL team_id (will be filled by script later)
@@ -3374,7 +3466,7 @@ const getTournamentSchedule = async (req, res) => {
             groupTeamsMap[group.group_id] = teams;
         }
 
-        // Get matches by stage with venue and referee info, including placeholders
+        // Get matches by stage with venue and referee info
         const [matches] = await pool.query(
             `SELECT 
                 m.match_id,
@@ -3404,9 +3496,7 @@ const getTournamentSchedule = async (req, res) => {
                 v.city as venue_city,
                 r.user_id as referee_user_id,
                 u_ref.full_name as referee_name,
-                r.certification_level as referee_certification_level,
-                mp.home_team_placeholder,
-                mp.away_team_placeholder
+                r.certification_level as referee_certification_level
              FROM matches m
              LEFT JOIN teams ht ON m.home_team_id = ht.team_id
              LEFT JOIN teams at ON m.away_team_id = at.team_id
@@ -3414,7 +3504,6 @@ const getTournamentSchedule = async (req, res) => {
              LEFT JOIN venues v ON m.venue_id = v.venue_id
              LEFT JOIN referees r ON m.main_referee_id = r.user_id
              LEFT JOIN users u_ref ON r.user_id = u_ref.user_id
-             LEFT JOIN match_placeholders mp ON m.match_id = mp.match_id
              WHERE m.tournament_id = ?
              ORDER BY 
                  CASE m.stage
@@ -4228,6 +4317,22 @@ const updateMatch = async (req, res) => {
                 checkDate = checkDate.split('T')[0].split(' ')[0];
             }
 
+            // 🔥 CRITICAL: Validate venue change doesn't conflict with other tournaments on the same date
+            const dateValidation = await validateMatchDateWithinTournament(
+                connection,
+                match.tournament_id,
+                checkDate,
+                venue_id
+            );
+
+            if (!dateValidation.valid) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: dateValidation.reason,
+                });
+            }
+
             const venueAvailabilityCheck = await checkVenueAvailability(connection, venue_id, checkDate, matchId);
 
             if (!venueAvailabilityCheck.available) {
@@ -4296,11 +4401,27 @@ const updateMatch = async (req, res) => {
                 formattedDate = match_date.split(' ')[0];
             }
 
+            // 🔥 CRITICAL: Validate new match date is within tournament period and doesn't conflict
+            const checkVenueId = venue_id || match.venue_id;
+            const dateValidation = await validateMatchDateWithinTournament(
+                connection,
+                match.tournament_id,
+                formattedDate,
+                checkVenueId
+            );
+
+            if (!dateValidation.valid) {
+                await connection.rollback();
+                return res.status(400).json({
+                    success: false,
+                    message: dateValidation.reason,
+                });
+            }
+
             updates.push('match_date = ?');
             params.push(formattedDate);
 
             // Check venue availability for new date (1 match per day per venue)
-            const checkVenueId = venue_id || match.venue_id;
             const checkRefereeId = referee_id !== undefined ? referee_id : match.main_referee_id;
 
             if (checkVenueId) {

@@ -605,16 +605,6 @@ const ScheduleManagementPage = () => {
         >
           Sân thi đấu
         </button>
-        <button
-          onClick={() => setActiveTab("referees")}
-          className={`px-4 py-2 font-medium ${
-            activeTab === "referees"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-600"
-          }`}
-        >
-          Trọng tài
-        </button>
       </div>
 
       {error && (
@@ -696,11 +686,6 @@ const ScheduleManagementPage = () => {
       {/* Venues Tab */}
       {activeTab === "venues" && (
         <VenuesTab venues={venues} tournamentId={tournamentId} />
-      )}
-
-      {/* Referees Tab */}
-      {activeTab === "referees" && (
-        <RefereesTab referees={referees} tournamentId={tournamentId} />
       )}
     </div>
   );
@@ -826,49 +811,7 @@ const VenuesTab = ({ venues, tournamentId }) => {
             >
               Xem lịch
             </button>
-            <button
-              onClick={() => fetchVenueAvailability(selectedVenue.venue_id)}
-              className="btn-secondary"
-            >
-              Xem thời gian bận
-            </button>
           </div>
-
-          {venueAvailability && (
-            <div className="mt-4">
-              <h4 className="font-semibold mb-2">Thời gian bận</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Rảnh: {venueAvailability.total_available} khung giờ
-                  </p>
-                  <div className="max-h-40 overflow-y-auto mt-2">
-                    {venueAvailability.available_slots
-                      .slice(0, 10)
-                      .map((slot, idx) => (
-                        <div key={idx} className="text-xs text-green-600">
-                          {slot.date} {slot.time}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Đã đặt: {venueAvailability.total_booked} khung giờ
-                  </p>
-                  <div className="max-h-40 overflow-y-auto mt-2">
-                    {venueAvailability.booked_slots
-                      .slice(0, 10)
-                      .map((slot, idx) => (
-                        <div key={idx} className="text-xs text-red-600">
-                          {slot.date} {slot.time}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {venueSchedule.length > 0 && (
             <div className="mt-4">
@@ -900,206 +843,6 @@ const VenuesTab = ({ venues, tournamentId }) => {
   );
 };
 
-// Referees Tab Component
-const RefereesTab = ({ referees, tournamentId }) => {
-  const [selectedReferee, setSelectedReferee] = useState(null);
-  const [refereeSchedule, setRefereeSchedule] = useState([]);
-  const [refereeAvailability, setRefereeAvailability] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
 
-  const fetchRefereeSchedule = async (refereeId) => {
-    try {
-      setLoading(true);
-      const params = {};
-      if (startDate) params.start_date = startDate;
-      if (endDate) params.end_date = endDate;
-
-      const response = await sponsorAPI.getRefereeSchedule(refereeId, params);
-      if (response.data.success) {
-        setRefereeSchedule(response.data.data.matches || []);
-      }
-    } catch (err) {
-      console.error("Error fetching referee schedule:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchRefereeAvailability = async (refereeId) => {
-    try {
-      setLoading(true);
-      if (!startDate || !endDate) {
-        alert("Vui lòng chọn khoảng thời gian");
-        return;
-      }
-
-      const response = await sponsorAPI.getRefereeAvailability(refereeId, {
-        start_date: startDate,
-        end_date: endDate,
-      });
-      if (response.data.success) {
-        setRefereeAvailability(response.data.data);
-      }
-    } catch (err) {
-      console.error("Error fetching referee availability:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="card">
-        <h3 className="text-lg font-semibold mb-4">Chọn trọng tài</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {referees.map((referee) => (
-            <div
-              key={referee.user_id}
-              className={`p-4 border-2 rounded-lg cursor-pointer transition ${
-                selectedReferee?.user_id === referee.user_id
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-200 hover:border-blue-300"
-              }`}
-              onClick={() => {
-                setSelectedReferee(referee);
-                fetchRefereeSchedule(referee.user_id);
-              }}
-            >
-              <h4 className="font-semibold">{referee.full_name}</h4>
-              <p className="text-sm text-gray-600">
-                Cấp độ: {referee.certification_level}
-              </p>
-              <p className="text-sm text-gray-600">
-                Số giấy phép: {referee.license_number}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {selectedReferee && (
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-4">
-            Thông tin trọng tài: {selectedReferee.full_name}
-          </h3>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Từ ngày</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="input"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Đến ngày</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="input"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => fetchRefereeSchedule(selectedReferee.user_id)}
-              className="btn-primary"
-            >
-              Xem lịch
-            </button>
-            <button
-              onClick={() => fetchRefereeAvailability(selectedReferee.user_id)}
-              className="btn-secondary"
-            >
-              Xem thời gian bận
-            </button>
-          </div>
-
-          {refereeAvailability && (
-            <div className="mt-4">
-              <h4 className="font-semibold mb-2">Thời gian bận</h4>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Rảnh: {refereeAvailability.total_available} khung giờ
-                  </p>
-                  <div className="max-h-40 overflow-y-auto mt-2">
-                    {refereeAvailability.available_slots
-                      .slice(0, 10)
-                      .map((slot, idx) => (
-                        <div key={idx} className="text-xs text-green-600">
-                          {slot.date} {slot.time}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Đã phân công: {refereeAvailability.total_booked} khung giờ
-                  </p>
-                  <div className="max-h-40 overflow-y-auto mt-2">
-                    {refereeAvailability.booked_slots
-                      .slice(0, 10)
-                      .map((slot, idx) => (
-                        <div key={idx} className="text-xs text-red-600">
-                          {slot.date} {slot.time}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Bận: {refereeAvailability.total_unavailable} khung
-                    giờ
-                  </p>
-                  <div className="max-h-40 overflow-y-auto mt-2">
-                    {refereeAvailability.unavailable_slots
-                      .slice(0, 10)
-                      .map((slot, idx) => (
-                        <div key={idx} className="text-xs text-orange-600">
-                          {slot.date} {slot.time} ({slot.reason})
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {refereeSchedule.length > 0 && (
-            <div className="mt-4">
-              <h4 className="font-semibold mb-2">Lịch phân công</h4>
-              <div className="space-y-2">
-                {refereeSchedule.map((match) => (
-                  <div
-                    key={match.match_id}
-                    className="p-3 bg-gray-50 rounded text-sm"
-                  >
-                    <p className="font-medium">
-                      {match.home_team_name} vs {match.away_team_name}
-                    </p>
-                    <p className="text-gray-600">
-                      {format(new Date(match.match_date), "dd/MM/yyyy")} -{" "}
-                      {match.match_time}
-                    </p>
-                    <p className="text-gray-600">
-                      {match.venue_name} - {match.tournament_name}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default ScheduleManagementPage;

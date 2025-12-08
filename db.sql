@@ -959,6 +959,7 @@ CREATE TABLE `standings` (
   `goals_against` int(11) DEFAULT 0,
   `goal_difference` int(11) DEFAULT 0,
   `position` int(11) DEFAULT 0,
+  `final_position` int(11) DEFAULT NULL COMMENT 'Vị trí chung cuộc sau khi giải đấu kết thúc (1=Vô địch, 2=Á quân, 3-4=Hạng 3, etc.)',
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -241,7 +241,73 @@ const updateTournamentStatus = async () => {
             console.log(`   🎯 Updated ${updatedCount} playoff matches`);
         }
 
-        // 3. Check tournaments that should be completed
+        // 3. Auto-set lineup for matches starting soon or already started
+        console.log(`\n🔧 Checking matches that need lineup auto-set...`);
+        
+        const [upcomingMatches] = await connection.query(
+            `SELECT m.match_id, m.tournament_id, m.home_team_id, m.away_team_id, 
+                    m.match_date, m.match_time, m.status,
+                    ht.team_name as home_team_name, at.team_name as away_team_name,
+                    ht.coach_id as home_coach_id, at.coach_id as away_coach_id
+            FROM matches m
+            JOIN teams ht ON m.home_team_id = ht.team_id
+            JOIN teams at ON m.away_team_id = at.team_id
+            WHERE m.status = 'scheduled' 
+            AND m.home_team_id IS NOT NULL 
+            AND m.away_team_id IS NOT NULL
+            AND CONCAT(m.match_date, ' ', m.match_time) <= DATE_ADD(NOW(), INTERVAL 24 HOUR)`,
+            []
+        );
+
+        for (const match of upcomingMatches) {
+            const matchDateTime = new Date(`${match.match_date.toISOString().split('T')[0]} ${match.match_time}`);
+            const hasStarted = matchDateTime <= now;
+            
+            console.log(`\n⚙️  Checking match: ${match.home_team_name} vs ${match.away_team_name}`);
+            console.log(`   📅 Scheduled: ${matchDateTime.toLocaleString('vi-VN')}`);
+            
+            // Check if home team has lineup
+            const [homeLineup] = await connection.query(
+                `SELECT COUNT(*) as count FROM match_lineups WHERE match_id = ? AND team_id = ?`,
+                [match.match_id, match.home_team_id]
+            );
+            
+            if (homeLineup[0].count === 0) {
+                console.log(`   🏠 Auto-setting lineup for home team: ${match.home_team_name}`);
+                await autoSetDefaultLineup(
+                    connection, 
+                    match.match_id, 
+                    match.home_team_id, 
+                    match.home_coach_id, 
+                    hasStarted,
+                    hasStarted,
+                    notificationsToCreate
+                );
+            }
+            
+            // Check if away team has lineup
+            const [awayLineup] = await connection.query(
+                `SELECT COUNT(*) as count FROM match_lineups WHERE match_id = ? AND team_id = ?`,
+                [match.match_id, match.away_team_id]
+            );
+            
+            if (awayLineup[0].count === 0) {
+                console.log(`   ✈️  Auto-setting lineup for away team: ${match.away_team_name}`);
+                await autoSetDefaultLineup(
+                    connection, 
+                    match.match_id, 
+                    match.away_team_id, 
+                    match.away_coach_id, 
+                    hasStarted,
+                    hasStarted,
+                    notificationsToCreate
+                );
+            }
+        }
+
+        console.log(`\n✅ Checked ${upcomingMatches.length} upcoming matches for lineup auto-set`);
+
+        // 4. Check tournaments that should be completed
         const [completedCandidates] = await connection.query(
             `SELECT tournament_id, tournament_name, end_date
             FROM tournaments
@@ -262,7 +328,7 @@ const updateTournamentStatus = async () => {
         // Create notifications after commit
         for (const notification of notificationsToCreate) {
             try {
-                await createNotification(connection, notification);
+                await createNotification(notification);
             } catch (err) {
                 console.error('Error creating notification:', err);
             }

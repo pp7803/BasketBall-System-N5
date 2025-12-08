@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { publicAPI, tournamentAPI } from '../../services/api';
+import { FaTrophy, FaMedal } from 'react-icons/fa';
 
 const StandingsPage = () => {
   const [standings, setStandings] = useState([]);
+  const [finalResults, setFinalResults] = useState(null);
   const [tournaments, setTournaments] = useState([]);
   const [selectedTournament, setSelectedTournament] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,6 +16,7 @@ const StandingsPage = () => {
   useEffect(() => {
     if (selectedTournament) {
       fetchStandings();
+      fetchFinalResults();
     }
   }, [selectedTournament]);
 
@@ -42,13 +45,39 @@ const StandingsPage = () => {
       const response = await publicAPI.getStandings({
         tournament_id: selectedTournament,
       });
+      console.log('Standings response:', response.data);
       // Use grouped data if available, otherwise use flat data
-      setStandings(response.data.grouped || { 'Overall': response.data.data || [] });
+      const groupedData = response.data.grouped || {};
+      const flatData = response.data.data || [];
+      
+      // If no grouped data but has flat data, group by 'Overall'
+      const finalStandings = Object.keys(groupedData).length > 0 
+        ? groupedData 
+        : (flatData.length > 0 ? { 'Overall': flatData } : {});
+      
+      console.log('Final standings:', finalStandings);
+      setStandings(finalStandings);
     } catch (error) {
       console.error('Error fetching standings:', error);
       setStandings({});
     }
     setLoading(false);
+  };
+
+  const fetchFinalResults = async () => {
+    try {
+      const response = await publicAPI.getFinalResults({
+        tournament_id: selectedTournament,
+      });
+      if (response.data.success && response.data.hasFinalResult) {
+        setFinalResults(response.data.data);
+      } else {
+        setFinalResults(null);
+      }
+    } catch (error) {
+      console.error('Error fetching final results:', error);
+      setFinalResults(null);
+    }
   };
 
   // Get tournament info to determine max_teams
@@ -91,6 +120,117 @@ const StandingsPage = () => {
         </div>
       ) : (
         <div className="space-y-8">
+          {/* Debug info */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="card bg-gray-100 text-xs">
+              <p>Tournament ID: {selectedTournament}</p>
+              <p>Groups found: {Object.keys(standings).join(', ') || 'None'}</p>
+              <p>Has final results: {finalResults ? 'Yes' : 'No'}</p>
+            </div>
+          )}
+          {/* Final Results - Champion & Runner-up */}
+          {finalResults && (
+            <div className="card bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300">
+              <div className="text-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800 mb-2">
+                  🏆 Kết Quả Chung Cuộc
+                </h2>
+                <p className="text-gray-600">
+                  Trận chung kết: {new Date(finalResults.finalMatch.match_date).toLocaleDateString('vi-VN')}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                {/* Champion */}
+                <div className="bg-white rounded-xl p-6 border-4 border-yellow-400 shadow-lg transform hover:scale-105 transition-transform">
+                  <div className="text-center">
+                    <FaTrophy className="text-6xl text-yellow-500 mx-auto mb-4 animate-bounce" />
+                    <div className="text-2xl font-bold text-yellow-600 mb-4">
+                      🥇 VÔ ĐỊCH
+                    </div>
+                    {finalResults.champion.logo_url && (
+                      <img
+                        src={finalResults.champion.logo_url}
+                        alt={finalResults.champion.team_name}
+                        className="w-24 h-24 object-contain mx-auto mb-4"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                      {finalResults.champion.team_name}
+                    </h3>
+                    <div className="text-4xl font-bold text-yellow-600">
+                      Hạng 1
+                    </div>
+                  </div>
+                </div>
+
+                {/* Runner-up */}
+                <div className="bg-white rounded-xl p-6 border-4 border-gray-300 shadow-lg transform hover:scale-105 transition-transform">
+                  <div className="text-center">
+                    <FaMedal className="text-6xl text-gray-400 mx-auto mb-4" />
+                    <div className="text-2xl font-bold text-gray-600 mb-4">
+                      🥈 Á QUÂN
+                    </div>
+                    {finalResults.runnerUp.logo_url && (
+                      <img
+                        src={finalResults.runnerUp.logo_url}
+                        alt={finalResults.runnerUp.team_name}
+                        className="w-24 h-24 object-contain mx-auto mb-4"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                      {finalResults.runnerUp.team_name}
+                    </h3>
+                    <div className="text-4xl font-bold text-gray-500">
+                      Hạng 2
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Final Match Score */}
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="text-center text-sm text-gray-600 mb-2">
+                  Tỷ số trận chung kết
+                </div>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="flex items-center gap-2">
+                    {finalResults.finalMatch.home_team.logo_url && (
+                      <img
+                        src={finalResults.finalMatch.home_team.logo_url}
+                        alt={finalResults.finalMatch.home_team.team_name}
+                        className="w-8 h-8 object-contain"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                    <span className="font-semibold">{finalResults.finalMatch.home_team.team_name}</span>
+                  </div>
+                  <div className="text-3xl font-bold text-primary-600">
+                    {finalResults.finalMatch.home_team.score}
+                  </div>
+                  <div className="text-2xl text-gray-400">-</div>
+                  <div className="text-3xl font-bold text-primary-600">
+                    {finalResults.finalMatch.away_team.score}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{finalResults.finalMatch.away_team.team_name}</span>
+                    {finalResults.finalMatch.away_team.logo_url && (
+                      <img
+                        src={finalResults.finalMatch.away_team.logo_url}
+                        alt={finalResults.finalMatch.away_team.team_name}
+                        className="w-8 h-8 object-contain"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Group Standings (Bảng A, B) */}
           {Object.keys(standings).sort().map((groupName) => (
             <div key={groupName} className="card">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">

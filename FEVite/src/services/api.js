@@ -516,6 +516,14 @@ export const publicAPI = {
   getStandings: (params) => apiClient.get("/public/standings", { params }),
 
   /**
+   * Get final results (Champion & Runner-up) after final match completed
+   * @param {Object} params - { tournament_id } (required)
+   * @returns {Promise}
+   */
+  getFinalResults: (params) =>
+    apiClient.get("/public/final-results", { params }),
+
+  /**
    * UC17: Search matches (extends UC15)
    * @param {Object} params - { keyword, tournament_id, date, team_name, venue_name }
    * @returns {Promise}
